@@ -9,13 +9,27 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:latex"
+  ],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "latex",
+        "extensions": [
+          ".tex"
+        ],
+        "aliases": [
+          "LaTeX",
+          "latex"
+        ]
+      }
+    ],
     "commands": [
       {
-        "command": "highdupe.helloWorld",
-        "title": "Hello World"
+        "command": "highdupe.findRepeatedWords",
+        "title": "Find Repeat Words"
       }
     ]
   },

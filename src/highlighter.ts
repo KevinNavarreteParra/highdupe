@@ -1,7 +1,17 @@
 import * as fs from 'fs';
+import * as path from 'path';
 
-const excludedWords = JSON.parse(fs.readFileSync('./src/excludeWords.json', 'utf-8'));
-
+export function getExcludedWords(): string[] {
+    const filePath = path.join(__dirname, 'excludeWords.json');
+    try {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        const json = JSON.parse(data);
+        return json.excludedWords || [];
+    } catch (error) {
+        console.error(`Error reading excludeWords.json: ${error.message}`);
+        return []; // Fallback to an empty exclusion list
+    }
+}
 function findRepeatedWords(line: string): string[] {
     const words = line
         .toLowerCase()

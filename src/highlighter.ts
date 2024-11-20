@@ -7,12 +7,17 @@ export function getExcludedWords(): string[] {
         const data = fs.readFileSync(filePath, 'utf-8');
         const json = JSON.parse(data);
         return json.excludedWords || [];
-    } catch (error) {
-        console.error(`Error reading excludeWords.json: ${error.message}`);
+    } catch (error: unknown) {
+        if (error instanceof Error) {
+            console.error(`Error reading excludeWords.json: ${error.message}`);
+        } else {
+            console.error('Unknown error reading excludeWords.json');
+        }
         return []; // Fallback to an empty exclusion list
     }
 }
 function findRepeatedWords(line: string): string[] {
+    const excludedWords = getExcludedWords();
     const words = line
         .toLowerCase()
         .match(/\b\w+\b/g)

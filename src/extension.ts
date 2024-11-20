@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import findRepeatedWords from './highlighter';
 
 export function activate(context: vscode.ExtensionContext) {
+    console.log('HighDupe extension activated!');
+
     const disposable = vscode.languages.registerDocumentHighlightProvider(
         { language: 'latex', scheme: 'file' },
         {

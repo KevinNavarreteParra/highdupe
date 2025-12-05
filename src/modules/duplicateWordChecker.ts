@@ -135,9 +135,10 @@ export class DuplicateWordChecker implements CheckerModule {
                 continue;
             }
 
-            // Skip lines inside math environments
+            // Skip lines with table or math environments
             if (lineText.includes('\\begin{equation}') ||
                 lineText.includes('\\begin{align}') ||
+                lineText.includes('\\begin{table}') ||
                 lineText.includes('$$')) {
                 continue;
             }
@@ -151,6 +152,11 @@ export class DuplicateWordChecker implements CheckerModule {
                 const matchText = match[0];
                 const startChar = match.index;
                 const endChar = startChar + matchText.length;
+
+                // Skip if this match is part of a LaTeX command
+                if (this.isPartOfLatexCommand(lineText, startChar, endChar)) {
+                    continue;
+                }
 
                 // Additional check: don't highlight inside comments (mid-line)
                 const beforeMatch = lineText.substring(0, startChar);
@@ -178,6 +184,59 @@ export class DuplicateWordChecker implements CheckerModule {
         }
 
         return results;
+    }
+
+    /**
+     * Check if a match is part of a LaTeX command
+     * Returns true if the match should be skipped
+     */
+    private isPartOfLatexCommand(lineText: string, startChar: number, endChar: number): boolean {
+        // Check if preceded by backslash (part of a command name)
+        // e.g., \autocite, \textcite, \ac
+        if (startChar > 0 && lineText[startChar - 1] === '\\') {
+            return true;
+        }
+
+        // Check if inside \begin{...} or \end{...}
+        // Look backwards for \begin{ or \end{
+        const beforeMatch = lineText.substring(0, startChar);
+        const lastBegin = beforeMatch.lastIndexOf('\\begin{');
+        const lastEnd = beforeMatch.lastIndexOf('\\end{');
+
+        if (lastBegin > lastEnd && lastBegin !== -1) {
+            // We're potentially inside a \begin{...}
+            const afterBegin = lineText.substring(lastBegin);
+            const closingBrace = afterBegin.indexOf('}');
+            if (closingBrace > 0 && closingBrace > (startChar - lastBegin)) {
+                // The match is inside the \begin{...} environment name
+                return true;
+            }
+        }
+
+        if (lastEnd > lastBegin && lastEnd !== -1) {
+            // We're potentially inside an \end{...}
+            const afterEnd = lineText.substring(lastEnd);
+            const closingBrace = afterEnd.indexOf('}');
+            if (closingBrace > 0 && closingBrace > (startChar - lastEnd)) {
+                // The match is inside the \end{...} environment name
+                return true;
+            }
+        }
+
+        // Check if inside a command's braces: \command{match}
+        // Look for \word{ pattern before the match
+        const commandPattern = /\\[a-zA-Z]+\{[^}]*$/;
+        const textBeforeMatch = lineText.substring(0, startChar);
+        if (commandPattern.test(textBeforeMatch)) {
+            // Check if there's a closing brace after the match
+            const textAfterMatch = lineText.substring(endChar);
+            if (textAfterMatch.indexOf('}') !== -1 && textAfterMatch.indexOf('}') < textAfterMatch.indexOf('{')) {
+                // We're inside \command{...}
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

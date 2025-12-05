@@ -54,7 +54,7 @@ export class DocumentParser {
 
     /**
      * Parse LaTeX document into paragraphs
-     * Handles: blank lines, \par commands, math environments, comments, bibliography
+     * Handles: blank lines, \par commands, math environments, comments, bibliography, tables
      */
     private static parseLatexParagraphs(document: vscode.TextDocument): Paragraph[] {
         const paragraphs: Paragraph[] = [];
@@ -63,6 +63,7 @@ export class DocumentParser {
         // Track environments
         let inMathEnvironment = false;
         let inBibliography = false;
+        let inTable = false;
 
         // Track current paragraph
         let currentParagraph: string[] = [];
@@ -92,6 +93,29 @@ export class DocumentParser {
 
             // Skip if in bibliography
             if (inBibliography) {
+                continue;
+            }
+
+            // Check for table environment start
+            if (line.match(/\\begin\{table\*?\}/)) {
+                inTable = true;
+                // End current paragraph before entering table
+                if (currentParagraph.length > 0) {
+                    this.addParagraph(paragraphs, currentParagraph, currentParagraphLines);
+                    currentParagraph = [];
+                    currentParagraphLines = [];
+                }
+                continue;
+            }
+
+            // Check for table environment end
+            if (line.match(/\\end\{table\*?\}/)) {
+                inTable = false;
+                continue;
+            }
+
+            // Skip if in table
+            if (inTable) {
                 continue;
             }
 
@@ -186,7 +210,8 @@ export class DocumentParser {
      * Preprocess a LaTeX line:
      * - Remove comments (% ...)
      * - Remove inline math ($...$, $$...$$)
-     * - Keep macro contents but remove macro syntax
+     * - Remove LaTeX commands and macros
+     * - Keep text content for checking
      */
     private static preprocessLatexLine(line: string): string {
         // Remove comments (but not \%)
@@ -196,12 +221,18 @@ export class DocumentParser {
         line = line.replace(/\$\$.*?\$\$/g, '');
         line = line.replace(/\$.*?\$/g, '');
 
-        // Remove citation commands but keep the key visible for context
-        // \cite{key} -> key
-        line = line.replace(/\\cite\{([^}]+)\}/g, '');
+        // Remove \begin{...} and \end{...} commands entirely
+        line = line.replace(/\\(begin|end)\{[^}]+\}/g, '');
+
+        // Remove citation commands completely (autocite, textcite, cite, etc.)
+        line = line.replace(/\\(auto)?cite[tp]?\*?\{[^}]+\}/g, '');
+        line = line.replace(/\\textcite\{[^}]+\}/g, '');
 
         // Remove label and ref commands
         line = line.replace(/\\(label|ref|pageref|eqref)\{[^}]+\}/g, '');
+
+        // Remove common macros that shouldn't be checked (ac, gls, etc.)
+        line = line.replace(/\\(ac|gls|glspl|acp|Ac|Gls)\{[^}]+\}/g, '');
 
         // For text formatting commands, keep only the content
         // \textbf{some words} -> some words

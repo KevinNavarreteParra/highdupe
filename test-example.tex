@@ -1,0 +1,49 @@
+% HighDupe Test File
+% This file demonstrates the duplicate word detection functionality
+
+\documentclass{article}
+\usepackage{amsmath}
+
+\begin{document}
+
+\section{Introduction}
+
+This is a test paragraph with some some duplicate words. Although Although we try to write write clearly, sometimes words get repeated repeated within the the same paragraph. This helps us test the duplicate word detection.
+
+Another paragraph without any duplicates should not trigger any warnings at all.
+
+However, this paragraph has has multiple issues. The word "has" appears appears twice, and the word "appears" is also also duplicated. We need need to catch catch all all of these these cases cases.
+
+% This is a comment that should be ignored
+% Even if it has duplicate duplicate words words
+
+\section{Math Section}
+
+Math environments should be skipped:
+
+\begin{equation}
+    x = x + x + x
+\end{equation}
+
+The word "equation" should not be flagged even if equation appears equation multiple times equation in this equation paragraph equation.
+
+Inline math like $x = x + x$ should also be ignored.
+
+\section{Formatted Text}
+
+Text with \textbf{bold bold words} should detect duplicates inside the command.
+
+The \emph{emphasis emphasis} command should also detect duplicates in in its content.
+
+\section{Citations and Labels}
+
+Citations like \cite{Smith2020} and \cite{Smith2020} should be handled properly.
+
+Labels \label{sec:test} and references \ref{sec:test} should not interfere.
+
+\begin{thebibliography}{9}
+\bibitem{Smith2020}
+Smith, J. (2020). Duplicate duplicate words should be ignored in bibliography.
+\end{thebibliography}
+
+\end{document}

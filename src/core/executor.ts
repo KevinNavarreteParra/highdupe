@@ -216,10 +216,8 @@ export class Executor {
             docCache.paragraphHashes = currentHashes;
             docCache.results = allResults;
             this.applyDecorations(editor, allResults);
-        } else {
-            // No changes, use cached results
-            this.applyDecorations(editor, docCache.results);
         }
+        // else: No changes at all - don't reapply decorations (prevents blinking)
     }
 
     /**

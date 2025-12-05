@@ -1,6 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import { CheckerModule, CheckResult, DocumentContext, ModuleSettings } from '../core/types';
 
 /**
@@ -16,6 +14,17 @@ interface DuplicateWordSettings extends ModuleSettings {
 }
 
 /**
+ * Default words to exclude from duplicate detection
+ * These are common words that are naturally repeated in writing
+ */
+const DEFAULT_EXCLUDE_WORDS = [
+    'the', 'and', 'a', 'of', 'to', 'in', 'is', 'it', 'that', 'for',
+    'as', 'with', 'on', 'at', 'by', 'from', 'or', 'an', 'be', 'this',
+    'was', 'are', 'have', 'has', 'had', 'not', 'but', 'can', 'will',
+    'if', 'we', 'he', 'she', 'they', 'you', 'i', 'my', 'our', 'your'
+];
+
+/**
  * Checker module for detecting duplicate words within paragraphs
  */
 export class DuplicateWordChecker implements CheckerModule {
@@ -29,29 +38,10 @@ export class DuplicateWordChecker implements CheckerModule {
         enabled: true,
         scope: 'paragraph',
         excludeWords: {
-            global: this.loadDefaultExcludedWords(),
+            global: [...DEFAULT_EXCLUDE_WORDS],
             project: []
         }
     };
-
-    /**
-     * Load default excluded words from the JSON file
-     */
-    private loadDefaultExcludedWords(): string[] {
-        try {
-            const filePath = path.join(__dirname, '..', 'excludeWords.json');
-            const data = fs.readFileSync(filePath, 'utf-8');
-            const json = JSON.parse(data);
-            return json.excludedWords || [];
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                console.error(`Error reading excludeWords.json: ${error.message}`);
-            } else {
-                console.error('Unknown error reading excludeWords.json');
-            }
-            return [];
-        }
-    }
 
     /**
      * Get all excluded words (global + project)
@@ -79,7 +69,8 @@ export class DuplicateWordChecker implements CheckerModule {
                     paragraph.text,
                     duplicateWord,
                     context.document,
-                    paragraph.startLine
+                    paragraph.startLine,
+                    paragraph.endLine
                 );
 
                 results.push(...occurrences);
@@ -122,35 +113,51 @@ export class DuplicateWordChecker implements CheckerModule {
 
     /**
      * Find all occurrences of a word in a paragraph and create CheckResults
+     * Now properly respects paragraph boundaries from DocumentContext
      */
     private findAllOccurrences(
         paragraphText: string,
         word: string,
         document: vscode.TextDocument,
-        startLine: number
+        startLine: number,
+        endLine: number
     ): CheckResult[] {
         const results: CheckResult[] = [];
         const regex = new RegExp(`\\b${this.escapeRegex(word)}\\b`, 'gi');
 
-        // We need to find the word in the actual document lines, not just the paragraph text
-        // This is because the paragraph text has been preprocessed and may not match exactly
-
-        let currentLine = startLine;
-        let match: RegExpExecArray | null;
-
-        // Search through the document starting from the paragraph's start line
-        while (currentLine < document.lineCount) {
+        // Search through the paragraph's line range
+        for (let currentLine = startLine; currentLine <= endLine && currentLine < document.lineCount; currentLine++) {
             const line = document.lineAt(currentLine);
             const lineText = line.text;
+
+            // Skip comment lines
+            if (lineText.trim().startsWith('%')) {
+                continue;
+            }
+
+            // Skip lines inside math environments
+            if (lineText.includes('\\begin{equation}') ||
+                lineText.includes('\\begin{align}') ||
+                lineText.includes('$$')) {
+                continue;
+            }
 
             // Reset regex
             regex.lastIndex = 0;
 
             // Find all matches in this line
+            let match: RegExpExecArray | null;
             while ((match = regex.exec(lineText)) !== null) {
                 const matchText = match[0];
                 const startChar = match.index;
                 const endChar = startChar + matchText.length;
+
+                // Additional check: don't highlight inside comments (mid-line)
+                const beforeMatch = lineText.substring(0, startChar);
+                if (beforeMatch.includes('%') && !beforeMatch.includes('\\%')) {
+                    // This match is after a comment character, skip it
+                    continue;
+                }
 
                 const range = new vscode.Range(
                     currentLine,
@@ -167,14 +174,6 @@ export class DuplicateWordChecker implements CheckerModule {
                     issueType: 'duplicate-word',
                     text: matchText
                 });
-            }
-
-            currentLine++;
-
-            // Check if we've moved beyond the paragraph
-            // This is a simple heuristic - if we hit a blank line, we're done
-            if (lineText.trim() === '' || lineText.includes('\\par')) {
-                break;
             }
         }
 

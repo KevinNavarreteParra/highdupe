@@ -58,12 +58,16 @@ export class DocumentParser {
      */
     private static parseLatexParagraphs(document: vscode.TextDocument): Paragraph[] {
         const paragraphs: Paragraph[] = [];
-        const lines: string[] = [];
         const lineCount = document.lineCount;
 
-        // First pass: collect lines, filtering out comments and tracking environments
+        // Track environments
         let inMathEnvironment = false;
         let inBibliography = false;
+
+        // Track current paragraph
+        let currentParagraph: string[] = [];
+        let currentParagraphLines: number[] = [];
+        let paragraphStartLine = 0;
 
         for (let i = 0; i < lineCount; i++) {
             const line = document.lineAt(i).text;
@@ -71,6 +75,12 @@ export class DocumentParser {
             // Check for bibliography start
             if (line.match(/\\begin\{(bibliography|thebibliography)\}/)) {
                 inBibliography = true;
+                // End current paragraph before entering bibliography
+                if (currentParagraph.length > 0) {
+                    this.addParagraph(paragraphs, currentParagraph, currentParagraphLines);
+                    currentParagraph = [];
+                    currentParagraphLines = [];
+                }
                 continue;
             }
 
@@ -88,6 +98,12 @@ export class DocumentParser {
             // Check for math environment start (equation, align, etc.)
             if (line.match(/\\begin\{(equation|align|gather|multline|flalign|alignat)\*?\}/)) {
                 inMathEnvironment = true;
+                // End current paragraph before entering math
+                if (currentParagraph.length > 0) {
+                    this.addParagraph(paragraphs, currentParagraph, currentParagraphLines);
+                    currentParagraph = [];
+                    currentParagraphLines = [];
+                }
             }
 
             // Check for math environment end
@@ -101,69 +117,69 @@ export class DocumentParser {
                 continue;
             }
 
+            // Skip comment-only lines
+            if (line.trim().startsWith('%')) {
+                continue;
+            }
+
             // Process line: remove inline math and comments
             let processedLine = this.preprocessLatexLine(line);
 
-            lines.push(processedLine);
-        }
-
-        // Second pass: group lines into paragraphs
-        let currentParagraph: string[] = [];
-        let paragraphStartLine = 0;
-        let currentOffset = 0;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-
             // Check for paragraph break: blank line or \par command
-            const isBlankLine = line.trim() === '';
+            const isBlankLine = processedLine.trim() === '';
             const hasParCommand = line.includes('\\par');
 
             if (isBlankLine || hasParCommand) {
                 // End current paragraph if it has content
                 if (currentParagraph.length > 0) {
-                    const paragraphText = currentParagraph.join(' ').trim();
-                    if (paragraphText.length > 0) {
-                        const startOffset = currentOffset;
-                        const endOffset = startOffset + paragraphText.length;
-
-                        paragraphs.push({
-                            text: paragraphText,
-                            startLine: paragraphStartLine,
-                            endLine: i - 1,
-                            startOffset,
-                            endOffset
-                        });
-
-                        currentOffset = endOffset + 1; // +1 for the paragraph break
-                    }
+                    this.addParagraph(paragraphs, currentParagraph, currentParagraphLines);
                     currentParagraph = [];
+                    currentParagraphLines = [];
                 }
-                paragraphStartLine = i + 1;
             } else {
                 // Add line to current paragraph
-                if (currentParagraph.length === 0) {
-                    paragraphStartLine = i;
+                if (processedLine.trim().length > 0) {
+                    currentParagraph.push(processedLine);
+                    currentParagraphLines.push(i);
                 }
-                currentParagraph.push(line);
             }
         }
 
         // Don't forget the last paragraph
         if (currentParagraph.length > 0) {
-            const paragraphText = currentParagraph.join(' ').trim();
-            if (paragraphText.length > 0) {
-                paragraphs.push({
-                    text: paragraphText,
-                    startLine: paragraphStartLine,
-                    endLine: lines.length - 1,
-                    startOffset: currentOffset,
-                    endOffset: currentOffset + paragraphText.length
-                });
-            }
+            this.addParagraph(paragraphs, currentParagraph, currentParagraphLines);
         }
 
         return paragraphs;
+    }
+
+    /**
+     * Helper method to add a paragraph to the list
+     */
+    private static addParagraph(
+        paragraphs: Paragraph[],
+        lines: string[],
+        lineNumbers: number[]
+    ): void {
+        if (lines.length === 0 || lineNumbers.length === 0) {
+            return;
+        }
+
+        const paragraphText = lines.join(' ').trim();
+        if (paragraphText.length === 0) {
+            return;
+        }
+
+        const startLine = lineNumbers[0];
+        const endLine = lineNumbers[lineNumbers.length - 1];
+
+        paragraphs.push({
+            text: paragraphText,
+            startLine,
+            endLine,
+            startOffset: 0, // These offsets are approximate
+            endOffset: paragraphText.length
+        });
     }
 
     /**

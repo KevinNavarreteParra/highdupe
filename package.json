@@ -30,8 +30,51 @@
       {
         "command": "highdupe.findRepeatedWords",
         "title": "Find Repeat Words"
+      },
+      {
+        "command": "highdupe.toggleChecking",
+        "title": "HighDupe: Toggle Continuous Checking"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "HighDupe",
+      "properties": {
+        "highdupe.checkInterval": {
+          "type": "number",
+          "default": 3000,
+          "description": "Interval in milliseconds for running checks (default: 3000ms = 3 seconds)",
+          "minimum": 500,
+          "maximum": 30000
+        },
+        "highdupe.modules.duplicateWord.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable duplicate word checking"
+        },
+        "highdupe.modules.duplicateWord.scope": {
+          "type": "string",
+          "enum": ["line", "paragraph"],
+          "default": "paragraph",
+          "description": "Scope for duplicate word detection (line or paragraph)"
+        },
+        "highdupe.modules.duplicateWord.excludeWords.global": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["the", "and", "a", "of", "to", "in", "is", "it", "that", "for"],
+          "description": "Global list of words to exclude from duplicate detection"
+        },
+        "highdupe.modules.duplicateWord.excludeWords.project": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Project-specific words to exclude from duplicate detection"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

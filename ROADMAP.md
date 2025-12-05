@@ -108,66 +108,74 @@ Two-tier settings:
 
 ## Implementation Phases
 
-### Phase 1: Foundation & Framework (Priority 1)
+### Phase 1: Foundation & Framework ✅ COMPLETE
 **Goal**: Build extensible architecture that supports multiple checker modules
 
 **Tasks**:
-- [ ] Design and implement base `CheckerModule` interface
-- [ ] Create `Executor` class to manage module lifecycle
-- [ ] Build `DocumentContext` abstraction for paragraph detection
-- [ ] Implement configuration system (global + workspace settings)
-- [ ] Create module registry system
-- [ ] Update extension.ts to use new architecture
-- [ ] Refactor existing duplicate detection into first module (`DuplicateWordChecker`)
+- [x] Design and implement base `CheckerModule` interface
+- [x] Create `Executor` class to manage module lifecycle
+- [x] Build `DocumentContext` abstraction for paragraph detection
+- [x] Implement configuration system (global + workspace settings)
+- [x] Create module registry system
+- [x] Update extension.ts to use new architecture
+- [x] Refactor existing duplicate detection into first module (`DuplicateWordChecker`)
 
-**Deliverable**: Working framework where new modules can be added by creating a new class and registering it
+**Deliverable**: ✅ Working framework where new modules can be added by creating a new class and registering it
 
 **Technical Decisions**:
 - Use TypeScript classes for modules (better encapsulation)
 - Store module registry in a central file (`src/modules/registry.ts`)
 - Use VSCode's workspace configuration API for settings
-- Paragraph detection: split on blank lines (`\n\n`) in LaTeX
+- Paragraph detection: split on blank lines (`\n\n`) and `\par` commands in LaTeX
+- Skip math environments, tables, bibliography, comments
 
 ---
 
-### Phase 2: Enhanced Duplicate Detection (Priority 2)
+### Phase 2: Enhanced Duplicate Detection ✅ COMPLETE
 **Goal**: Fix and enhance the duplicate word checker
 
 **Tasks**:
-- [ ] Highlight **all instances** of duplicate words (not just first)
-- [ ] Implement paragraph-level detection (currently line-level)
-- [ ] Add hover tooltips with explanations
-- [ ] Support both global and project-specific exclude words
-- [ ] Add simple suggestions in tooltips ("Consider using a synonym")
-- [ ] Improve word boundary detection (handle LaTeX commands properly)
+- [x] Highlight **all instances** of duplicate words (not just first)
+- [x] Implement paragraph-level detection (currently line-level)
+- [x] Add hover tooltips with explanations
+- [x] Support both global and project-specific exclude words
+- [x] Add simple suggestions in tooltips ("Consider using a synonym")
+- [x] Improve word boundary detection (handle LaTeX commands properly)
+- [x] Skip LaTeX macros (\ac, \cite, \textcite, etc.)
+- [x] Skip table environments completely
+- [x] Skip \begin{...} and \end{...} environment names
 
-**Deliverable**: Robust duplicate word detection at paragraph level with helpful tooltips
+**Deliverable**: ✅ Robust duplicate word detection at paragraph level with helpful tooltips, dissertation-ready LaTeX handling
 
 **Technical Decisions**:
 - Use VSCode `DecorationOptions` for underlines (instead of DocumentHighlight)
 - Different decoration types for different severities
 - Tooltip text includes word count and simple suggestion
+- Comprehensive LaTeX command filtering with isPartOfLatexCommand() method
 
 ---
 
-### Phase 3: Continuous Checking (Priority 3)
+### Phase 3: Continuous Checking ✅ COMPLETE
 **Goal**: Enable "set and forget" real-time checking during writing
 
 **Tasks**:
-- [ ] Implement debounced checking (runs every X seconds, configurable)
-- [ ] Add document change listeners
-- [ ] Optimize performance for large documents
-- [ ] Implement incremental checking (only re-check changed paragraphs)
-- [ ] Add status bar indicator showing active checks
-- [ ] Create enable/disable commands for quick toggling
+- [x] Implement debounced checking (runs every X seconds, configurable)
+- [x] Add document change listeners
+- [x] Optimize performance for large documents
+- [x] Implement incremental checking (only re-check changed paragraphs)
+- [x] Add status bar indicator showing active checks
+- [x] Create enable/disable commands for quick toggling
 
-**Deliverable**: Continuous, performant checking that runs automatically while writing
+**Deliverable**: ✅ Continuous, performant checking that runs automatically while writing
 
 **Technical Decisions**:
 - Default interval: 3 seconds (user-configurable)
-- Debounce user input to avoid excessive re-checking
-- Cache paragraph boundaries to avoid re-parsing entire document
-- Status bar shows: "HighDupe: ✓ 3 modules active"
+- MD5 hashing for paragraph change detection
+- Incremental checking: only re-checks paragraphs that changed
+- Full recheck when paragraph count changes
+- Status bar shows: "$(check) HighDupe: 1 module" when active, "$(circle-outline) HighDupe: Off" when disabled
+- Status bar is clickable to toggle checking on/off
+- Auto-start checking for LaTeX files
 
 ---
 

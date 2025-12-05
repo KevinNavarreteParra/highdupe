@@ -5,6 +5,7 @@ import { HighDupeConfiguration } from './core/types';
 
 let executor: Executor | undefined;
 let isCheckingEnabled = false;
+let statusBarItem: vscode.StatusBarItem | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('HighDupe extension activated!');
@@ -14,6 +15,14 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register all modules
     ModuleRegistry.registerAll(executor);
+
+    // Create status bar item
+    statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    statusBarItem.command = 'highdupe.toggleChecking';
+    statusBarItem.tooltip = 'Click to toggle HighDupe checking';
+    context.subscriptions.push(statusBarItem);
+    updateStatusBar();
+    statusBarItem.show();
 
     // Load configuration
     loadConfiguration();
@@ -72,11 +81,13 @@ export function activate(context: vscode.ExtensionContext) {
                 // Disable
                 executor.stopContinuousChecking();
                 isCheckingEnabled = false;
+                updateStatusBar();
                 vscode.window.showInformationMessage('HighDupe: Continuous checking disabled');
             } else {
                 // Enable
                 executor.startContinuousChecking(editor);
                 isCheckingEnabled = true;
+                updateStatusBar();
                 vscode.window.showInformationMessage('HighDupe: Continuous checking enabled');
             }
         }
@@ -109,6 +120,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (doc.languageId === 'latex') {
             executor.startContinuousChecking(vscode.window.activeTextEditor);
             isCheckingEnabled = true;
+            updateStatusBar();
             console.log('HighDupe: Auto-started continuous checking for LaTeX file');
         }
     }
@@ -167,9 +179,34 @@ function loadConfiguration(): void {
     console.log('HighDupe: Configuration loaded', highdupeConfig);
 }
 
+/**
+ * Update the status bar to reflect current state
+ */
+function updateStatusBar(): void {
+    if (!statusBarItem || !executor) {
+        return;
+    }
+
+    const moduleCount = executor.getModules().filter(m => m.enabled).length;
+
+    if (isCheckingEnabled) {
+        statusBarItem.text = `$(check) HighDupe: ${moduleCount} module${moduleCount !== 1 ? 's' : ''}`;
+        statusBarItem.backgroundColor = undefined;
+        statusBarItem.tooltip = `HighDupe is active with ${moduleCount} module${moduleCount !== 1 ? 's' : ''}. Click to disable.`;
+    } else {
+        statusBarItem.text = `$(circle-outline) HighDupe: Off`;
+        statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+        statusBarItem.tooltip = 'HighDupe is disabled. Click to enable.';
+    }
+}
+
 export function deactivate() {
     if (executor) {
         executor.dispose();
         executor = undefined;
+    }
+    if (statusBarItem) {
+        statusBarItem.dispose();
+        statusBarItem = undefined;
     }
 }

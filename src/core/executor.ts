@@ -1,6 +1,15 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { CheckerModule, CheckResult, DocumentContext, HighDupeConfiguration } from './types';
 import { DocumentParser } from '../utils/documentParser';
+
+/**
+ * Cache entry for a document
+ */
+interface DocumentCache {
+    paragraphHashes: Map<number, string>; // line number -> hash
+    results: CheckResult[];
+}
 
 /**
  * Manages the lifecycle of checker modules and coordinates checking operations
@@ -10,6 +19,7 @@ export class Executor {
     private decorationTypes: Map<string, vscode.TextEditorDecorationType> = new Map();
     private checkTimer: NodeJS.Timeout | undefined;
     private configuration: HighDupeConfiguration;
+    private cache: Map<string, DocumentCache> = new Map(); // document URI -> cache
 
     constructor() {
         // Default configuration
@@ -143,15 +153,79 @@ export class Executor {
     }
 
     /**
-     * Run all enabled checker modules on the current editor
+     * Run all enabled checker modules on the current editor with incremental checking
      */
     runChecks(editor: vscode.TextEditor): void {
         const document = editor.document;
+        const documentUri = document.uri.toString();
 
         // Parse document into context
         const context: DocumentContext = DocumentParser.parseDocument(document, editor.selection.active);
 
-        // Run all enabled modules
+        // Get or create cache for this document
+        let docCache = this.cache.get(documentUri);
+        if (!docCache) {
+            docCache = {
+                paragraphHashes: new Map(),
+                results: []
+            };
+            this.cache.set(documentUri, docCache);
+        }
+
+        // Compute hashes for all paragraphs and identify changes
+        const currentHashes = new Map<number, string>();
+        const changedParagraphIndices: number[] = [];
+
+        for (let i = 0; i < context.paragraphs.length; i++) {
+            const paragraph = context.paragraphs[i];
+            const hash = this.hashParagraph(paragraph.text);
+            currentHashes.set(i, hash);
+
+            // Check if this paragraph has changed
+            const cachedHash = docCache.paragraphHashes.get(i);
+            if (cachedHash !== hash) {
+                changedParagraphIndices.push(i);
+            }
+        }
+
+        // Check if number of paragraphs changed (need full recheck)
+        const paragraphCountChanged = docCache.paragraphHashes.size !== context.paragraphs.length;
+
+        if (paragraphCountChanged) {
+            // Full recheck needed
+            const allResults = this.runFullCheck(context);
+            docCache.paragraphHashes = currentHashes;
+            docCache.results = allResults;
+            this.applyDecorations(editor, allResults);
+        } else if (changedParagraphIndices.length > 0) {
+            // Incremental check: only check changed paragraphs
+            const newResults = this.runIncrementalCheck(context, changedParagraphIndices);
+
+            // Remove old results for changed paragraphs
+            const unchangedResults = docCache.results.filter(result => {
+                const resultLine = result.range.start.line;
+                // Keep results that are not in any changed paragraph
+                return !changedParagraphIndices.some(idx => {
+                    const para = context.paragraphs[idx];
+                    return resultLine >= para.startLine && resultLine <= para.endLine;
+                });
+            });
+
+            // Merge unchanged and new results
+            const allResults = [...unchangedResults, ...newResults];
+            docCache.paragraphHashes = currentHashes;
+            docCache.results = allResults;
+            this.applyDecorations(editor, allResults);
+        } else {
+            // No changes, use cached results
+            this.applyDecorations(editor, docCache.results);
+        }
+    }
+
+    /**
+     * Run a full check on all paragraphs
+     */
+    private runFullCheck(context: DocumentContext): CheckResult[] {
         const allResults: CheckResult[] = [];
 
         for (const module of this.modules.values()) {
@@ -165,8 +239,40 @@ export class Executor {
             }
         }
 
-        // Apply decorations
-        this.applyDecorations(editor, allResults);
+        return allResults;
+    }
+
+    /**
+     * Run check only on specific paragraphs (incremental)
+     */
+    private runIncrementalCheck(context: DocumentContext, paragraphIndices: number[]): CheckResult[] {
+        const allResults: CheckResult[] = [];
+
+        // Create a filtered context with only changed paragraphs
+        const filteredContext: DocumentContext = {
+            ...context,
+            paragraphs: paragraphIndices.map(idx => context.paragraphs[idx])
+        };
+
+        for (const module of this.modules.values()) {
+            if (module.enabled) {
+                try {
+                    const results = module.check(filteredContext);
+                    allResults.push(...results);
+                } catch (error) {
+                    console.error(`HighDupe: Error running module '${module.name}':`, error);
+                }
+            }
+        }
+
+        return allResults;
+    }
+
+    /**
+     * Compute hash for a paragraph text
+     */
+    private hashParagraph(text: string): string {
+        return crypto.createHash('md5').update(text).digest('hex');
     }
 
     /**
@@ -238,6 +344,17 @@ export class Executor {
     }
 
     /**
+     * Clear cache for a specific document or all documents
+     */
+    clearCache(documentUri?: string): void {
+        if (documentUri) {
+            this.cache.delete(documentUri);
+        } else {
+            this.cache.clear();
+        }
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
@@ -251,5 +368,8 @@ export class Executor {
 
         // Clear modules
         this.modules.clear();
+
+        // Clear cache
+        this.cache.clear();
     }
 }

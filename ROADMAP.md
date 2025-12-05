@@ -192,9 +192,10 @@ Two-tier settings:
 - Suggestion: "Expand contraction for formal writing"
 
 #### 4.4 Paragraph Length Checker
-- Warns when paragraphs exceed a configurable length
-- Threshold: word count or line count
-- Suggestion: "Consider breaking into smaller paragraphs"
+- Warns when paragraphs deviate significantly from document average
+- Statistical approach: flag paragraphs that are dramatically longer than modal paragraph length
+- Calculates document-level statistics to determine "normal" paragraph length
+- Suggestion: "This paragraph is significantly longer than your average paragraph. Consider breaking it up."
 
 #### 4.5 Passive Voice Checker
 - Detects passive voice constructions
@@ -228,14 +229,14 @@ Two-tier settings:
 - Integration with Grammarly-style suggestions
 
 ### User Experience
-- Different colored underlines per issue type:
+- **Different colored underlines per issue type** (CONFIRMED):
   - Yellow: duplicate words
   - Green: passive voice
   - Blue: style suggestions (adverbs, contractions)
   - Purple: structure issues (paragraph length)
-- Sidebar panel showing all issues in document
-- Ignore/dismiss specific warnings
-- Custom regex-based checks via user configuration
+- Right-click context menu to ignore false positives or dismiss suggestions
+- Sidebar panel showing all issues in document (future)
+- Custom regex-based checks via user configuration (future)
 
 ---
 
@@ -250,10 +251,14 @@ Two-tier settings:
   - Limit scope to visible editor range (future optimization)
 
 ### LaTeX-Specific Challenges
-- **Math environments**: Should skip `$...$`, `$$...$$`, `\begin{equation}`
+- **Math environments**: Skip `$...$`, `$$...$$`, `\begin{equation}...` (CONFIRMED)
+- **Bibliography**: Skip bibliography sections (CONFIRMED)
 - **Comments**: Should skip `%` comment lines
-- **Commands**: Should handle `\textbf{word}` vs raw text
+- **LaTeX macros/commands**: Ignore the macro itself but check contents
+  - Example: In `\textbf{some words}`, ignore `\textbf` but check "some words"
+  - Command syntax should not count as words, but their arguments should be checked
 - **Citations**: Should skip `\cite{ref}` patterns
+- **Paragraph boundaries**: Detect both blank lines (`\n\n`) and `\par` commands (CONFIRMED)
 
 ### Testing Strategy
 - Unit tests for each checker module
@@ -278,24 +283,28 @@ Two-tier settings:
 
 ---
 
-## Open Questions & Decisions Needed
+## Architectural Decisions (CONFIRMED)
 
-1. **Decoration Strategy**: Should we use different decoration types (underline styles) or colors for different issue types?
+1. **Decoration Strategy**: ✓ Use different colored underlines for different issue types
+   - Yellow: duplicate words
+   - Green: passive voice
+   - Blue: style suggestions (adverbs, contractions)
+   - Purple: structure issues (paragraph length)
 
-2. **Paragraph Boundaries**: In LaTeX, should we consider `\par` commands in addition to blank lines?
+2. **Paragraph Boundaries**: ✓ Consider both blank lines (`\n\n`) AND `\par` commands
 
-3. **Ignore Mechanisms**: How should users ignore false positives?
-   - Right-click context menu?
-   - Inline comments (e.g., `% highdupe-ignore-next`)?
+3. **Ignore Mechanisms**: ✓ Right-click context menu for dismissing false positives
 
-4. **Module Distribution**: Should modules be:
-   - Built-in only?
-   - Support third-party modules from extensions marketplace?
+4. **Module Distribution**: ✓ Built-in modules only (personal app, no third-party extensions)
 
-5. **LaTeX Environment Handling**: Should we skip checking inside:
-   - Math environments?
-   - Code listings?
-   - Bibliography?
+5. **LaTeX Environment Handling**:
+   - ✓ Skip math environments (`$...$`, `$$...$$`, `\begin{equation}...`)
+   - ✓ Skip bibliography sections
+   - ✓ Skip LaTeX command syntax but CHECK command contents
+     - Example: `\textbf{some words}` → ignore `\textbf`, check "some words"
+   - Skip comment lines (starting with `%`)
+
+6. **Paragraph Length Detection**: ✓ Statistical approach - flag deviations from modal paragraph length rather than absolute thresholds
 
 ---
 

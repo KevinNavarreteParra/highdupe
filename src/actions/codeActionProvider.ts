@@ -37,15 +37,27 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
         const documentUri = document.uri.toString();
         const results = this.checkResults.get(documentUri);
 
+        console.log('HighDupe CodeActionProvider: provideCodeActions called');
+        console.log('  Document URI:', documentUri);
+        console.log('  Range:', range);
+        console.log('  Results count:', results?.length || 0);
+
         if (!results || results.length === 0) {
             return [];
         }
 
         const actions: vscode.CodeAction[] = [];
 
-        // Find all check results that intersect with the current range
+        // Find all check results that intersect with the current range or contain the cursor
         for (const result of results) {
-            if (result.range.intersection(range)) {
+            // Check if the result range contains the cursor position or overlaps with the selection
+            const intersects = result.range.intersection(range) !== undefined;
+            const containsStart = result.range.contains(range.start);
+            const containsEnd = result.range.contains(range.end);
+
+            if (intersects || containsStart || containsEnd) {
+                console.log('  Found matching result for word:', result.text);
+
                 // Only provide actions for duplicate-word issues
                 if (result.issueType === 'duplicate-word') {
                     const word = result.text.toLowerCase();
@@ -94,6 +106,7 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
             }
         }
 
+        console.log('  Returning', actions.length, 'actions');
         return actions;
     }
 }

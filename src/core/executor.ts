@@ -12,6 +12,15 @@ interface DocumentCache {
 }
 
 /**
+ * Represents an ignored instance of an issue
+ */
+interface IgnoredInstance {
+    line: number;
+    character: number;
+    word: string;
+}
+
+/**
  * Manages the lifecycle of checker modules and coordinates checking operations
  */
 export class Executor {
@@ -20,6 +29,9 @@ export class Executor {
     private checkTimer: NodeJS.Timeout | undefined;
     private configuration: HighDupeConfiguration;
     private cache: Map<string, DocumentCache> = new Map(); // document URI -> cache
+    private ignoredInstances: Map<string, Set<string>> = new Map(); // document URI -> Set of instance keys
+    private latestResults: Map<string, CheckResult[]> = new Map(); // document URI -> latest check results
+    private onCheckCompleteCallback?: (documentUri: string) => void;
 
     constructor() {
         // Default configuration
@@ -122,6 +134,13 @@ export class Executor {
     }
 
     /**
+     * Set callback to be called when checks complete
+     */
+    setOnCheckCompleteCallback(callback: (documentUri: string) => void): void {
+        this.onCheckCompleteCallback = callback;
+    }
+
+    /**
      * Start continuous checking
      */
     startContinuousChecking(editor: vscode.TextEditor): void {
@@ -197,6 +216,11 @@ export class Executor {
             docCache.paragraphHashes = currentHashes;
             docCache.results = allResults;
             this.applyDecorations(editor, allResults);
+
+            // Notify callback
+            if (this.onCheckCompleteCallback) {
+                this.onCheckCompleteCallback(documentUri);
+            }
         } else if (changedParagraphIndices.length > 0) {
             // Incremental check: only check changed paragraphs
             const newResults = this.runIncrementalCheck(context, changedParagraphIndices);
@@ -216,6 +240,11 @@ export class Executor {
             docCache.paragraphHashes = currentHashes;
             docCache.results = allResults;
             this.applyDecorations(editor, allResults);
+
+            // Notify callback
+            if (this.onCheckCompleteCallback) {
+                this.onCheckCompleteCallback(documentUri);
+            }
         }
         // else: No changes at all - don't reapply decorations (prevents blinking)
     }
@@ -277,10 +306,25 @@ export class Executor {
      * Apply decorations to the editor based on check results
      */
     private applyDecorations(editor: vscode.TextEditor, results: CheckResult[]): void {
+        const documentUri = editor.document.uri.toString();
+
+        // Filter out ignored instances
+        const filteredResults = results.filter(result => {
+            return !this.isInstanceIgnored(
+                documentUri,
+                result.range.start.line,
+                result.range.start.character,
+                result.text
+            );
+        });
+
+        // Store the filtered results for the code action provider
+        this.latestResults.set(documentUri, filteredResults);
+
         // Group results by issue type
         const resultsByType = new Map<string, CheckResult[]>();
 
-        for (const result of results) {
+        for (const result of filteredResults) {
             const issueType = result.issueType;
             if (!resultsByType.has(issueType)) {
                 resultsByType.set(issueType, []);
@@ -353,6 +397,54 @@ export class Executor {
     }
 
     /**
+     * Create a unique key for an ignored instance
+     */
+    private createInstanceKey(line: number, character: number, word: string): string {
+        return `${line}:${character}:${word.toLowerCase()}`;
+    }
+
+    /**
+     * Add an ignored instance for a document
+     */
+    addIgnoredInstance(documentUri: string, line: number, character: number, word: string): void {
+        if (!this.ignoredInstances.has(documentUri)) {
+            this.ignoredInstances.set(documentUri, new Set());
+        }
+        const key = this.createInstanceKey(line, character, word);
+        this.ignoredInstances.get(documentUri)!.add(key);
+    }
+
+    /**
+     * Check if an instance is ignored
+     */
+    isInstanceIgnored(documentUri: string, line: number, character: number, word: string): boolean {
+        const instances = this.ignoredInstances.get(documentUri);
+        if (!instances) {
+            return false;
+        }
+        const key = this.createInstanceKey(line, character, word);
+        return instances.has(key);
+    }
+
+    /**
+     * Clear ignored instances for a document
+     */
+    clearIgnoredInstances(documentUri?: string): void {
+        if (documentUri) {
+            this.ignoredInstances.delete(documentUri);
+        } else {
+            this.ignoredInstances.clear();
+        }
+    }
+
+    /**
+     * Get the latest check results for a document
+     */
+    getLatestResults(documentUri: string): CheckResult[] {
+        return this.latestResults.get(documentUri) || [];
+    }
+
+    /**
      * Dispose of resources
      */
     dispose(): void {
@@ -369,5 +461,9 @@ export class Executor {
 
         // Clear cache
         this.cache.clear();
+
+        // Clear ignored instances and latest results
+        this.ignoredInstances.clear();
+        this.latestResults.clear();
     }
 }

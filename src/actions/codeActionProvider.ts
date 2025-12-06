@@ -33,75 +33,104 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
         range: vscode.Range | vscode.Selection,
         context: vscode.CodeActionContext,
         token: vscode.CancellationToken
-    ): vscode.ProviderResult<(vscode.CodeAction | vscode.Command)[]> {
+    ): vscode.ProviderResult<vscode.CodeAction[]> {
         const documentUri = document.uri.toString();
         const results = this.checkResults.get(documentUri);
 
         console.log('HighDupe CodeActionProvider: provideCodeActions called');
         console.log('  Document URI:', documentUri);
         console.log('  Range:', range);
+        console.log('  Diagnostics in context:', context.diagnostics.length);
         console.log('  Results count:', results?.length || 0);
 
         if (!results || results.length === 0) {
             return [];
         }
 
-        const actions: (vscode.CodeAction | vscode.Command)[] = [];
+        const actions: vscode.CodeAction[] = [];
         const wordsProcessed = new Set<string>(); // Track words we've already added actions for
 
-        // Find all check results that intersect with the current range or contain the cursor
-        for (const result of results) {
-            // Check if the result range contains the cursor position or overlaps with the selection
-            const intersects = result.range.intersection(range) !== undefined;
-            const containsStart = result.range.contains(range.start);
-            const containsEnd = result.range.contains(range.end);
-
-            if (intersects || containsStart || containsEnd) {
-                // Only provide actions for duplicate-word issues
-                if (result.issueType === 'duplicate-word') {
-                    const word = result.text.toLowerCase();
-
-                    // Skip if we've already added actions for this word
-                    if (wordsProcessed.has(word)) {
-                        continue;
-                    }
-                    wordsProcessed.add(word);
-
-                    console.log('  Found matching result for word:', result.text);
-
-                    // Command 1: Add to global exclude list
-                    const addToGlobalCommand: vscode.Command = {
-                        title: `Add "${word}" to global exclude list`,
-                        command: 'highdupe.addToGlobalExcludeList',
-                        arguments: [word]
-                    };
-                    actions.push(addToGlobalCommand);
-
-                    // Command 2: Add to project exclude list
-                    const addToProjectCommand: vscode.Command = {
-                        title: `Add "${word}" to project exclude list`,
-                        command: 'highdupe.addToProjectExcludeList',
-                        arguments: [word]
-                    };
-                    actions.push(addToProjectCommand);
-
-                    // Command 3: Ignore this instance
-                    const ignoreInstanceCommand: vscode.Command = {
-                        title: `Ignore this instance of "${word}"`,
-                        command: 'highdupe.ignoreInstance',
-                        arguments: [
-                            documentUri,
-                            result.range.start.line,
-                            result.range.start.character,
-                            word
-                        ]
-                    };
-                    actions.push(ignoreInstanceCommand);
-                }
+        // Process diagnostics provided by VS Code
+        for (const diagnostic of context.diagnostics) {
+            // Only handle our diagnostics
+            if (diagnostic.source !== 'HighDupe') {
+                continue;
             }
+
+            // Only handle duplicate-word issues
+            if (diagnostic.code !== 'duplicate-word') {
+                continue;
+            }
+
+            // Find the corresponding result
+            const result = results.find(r =>
+                r.range.isEqual(diagnostic.range) &&
+                r.issueType === 'duplicate-word'
+            );
+
+            if (!result) {
+                continue;
+            }
+
+            const word = result.text.toLowerCase();
+
+            // Skip if we've already added actions for this word
+            if (wordsProcessed.has(word)) {
+                continue;
+            }
+            wordsProcessed.add(word);
+
+            console.log('  Found diagnostic for word:', result.text);
+
+            // Action 1: Add to global exclude list
+            const addToGlobalAction = new vscode.CodeAction(
+                `Add "${word}" to global exclude list`,
+                vscode.CodeActionKind.QuickFix
+            );
+            addToGlobalAction.command = {
+                title: `Add "${word}" to global exclude list`,
+                command: 'highdupe.addToGlobalExcludeList',
+                arguments: [word]
+            };
+            addToGlobalAction.diagnostics = [diagnostic];
+            addToGlobalAction.isPreferred = false;
+            actions.push(addToGlobalAction);
+
+            // Action 2: Add to project exclude list
+            const addToProjectAction = new vscode.CodeAction(
+                `Add "${word}" to project exclude list`,
+                vscode.CodeActionKind.QuickFix
+            );
+            addToProjectAction.command = {
+                title: `Add "${word}" to project exclude list`,
+                command: 'highdupe.addToProjectExcludeList',
+                arguments: [word]
+            };
+            addToProjectAction.diagnostics = [diagnostic];
+            addToProjectAction.isPreferred = false;
+            actions.push(addToProjectAction);
+
+            // Action 3: Ignore this instance
+            const ignoreInstanceAction = new vscode.CodeAction(
+                `Ignore this instance of "${word}"`,
+                vscode.CodeActionKind.QuickFix
+            );
+            ignoreInstanceAction.command = {
+                title: `Ignore this instance of "${word}"`,
+                command: 'highdupe.ignoreInstance',
+                arguments: [
+                    documentUri,
+                    result.range.start.line,
+                    result.range.start.character,
+                    word
+                ]
+            };
+            ignoreInstanceAction.diagnostics = [diagnostic];
+            ignoreInstanceAction.isPreferred = true;
+            actions.push(ignoreInstanceAction);
         }
 
-        console.log('  Returning', actions.length, 'actions');
+        console.log('  Returning', actions.length, 'code actions');
         return actions;
     }
 }

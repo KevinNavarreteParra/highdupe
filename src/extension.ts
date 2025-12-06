@@ -119,6 +119,7 @@ export function activate(context: vscode.ExtensionContext) {
     const addToGlobalExcludeListCommand = vscode.commands.registerCommand(
         'highdupe.addToGlobalExcludeList',
         async (word: string) => {
+            console.log('HighDupe: addToGlobalExcludeList called with word:', word);
             const config = vscode.workspace.getConfiguration('highdupe');
             const globalExcludeWords: string[] = config.get('modules.duplicateWord.excludeWords.global', []);
 
@@ -126,6 +127,7 @@ export function activate(context: vscode.ExtensionContext) {
                 globalExcludeWords.push(word.toLowerCase());
                 await config.update('modules.duplicateWord.excludeWords.global', globalExcludeWords, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage(`Added "${word}" to global exclude list`);
+                console.log('HighDupe: Word added to global exclude list, triggering re-check');
 
                 // Trigger a re-check immediately
                 if (vscode.window.activeTextEditor && executor) {
@@ -141,6 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
     const addToProjectExcludeListCommand = vscode.commands.registerCommand(
         'highdupe.addToProjectExcludeList',
         async (word: string) => {
+            console.log('HighDupe: addToProjectExcludeList called with word:', word);
             const config = vscode.workspace.getConfiguration('highdupe');
             const projectExcludeWords: string[] = config.get('modules.duplicateWord.excludeWords.project', []);
 
@@ -148,6 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
                 projectExcludeWords.push(word.toLowerCase());
                 await config.update('modules.duplicateWord.excludeWords.project', projectExcludeWords, vscode.ConfigurationTarget.Workspace);
                 vscode.window.showInformationMessage(`Added "${word}" to project exclude list`);
+                console.log('HighDupe: Word added to project exclude list, triggering re-check');
 
                 // Trigger a re-check immediately
                 if (vscode.window.activeTextEditor && executor) {
@@ -163,6 +167,11 @@ export function activate(context: vscode.ExtensionContext) {
     const ignoreInstanceCommand = vscode.commands.registerCommand(
         'highdupe.ignoreInstance',
         (documentUri: string, line: number, character: number, word: string) => {
+            console.log('HighDupe: ignoreInstance called');
+            console.log('  documentUri:', documentUri);
+            console.log('  line:', line, 'character:', character);
+            console.log('  word:', word);
+
             if (!executor) {
                 vscode.window.showErrorMessage('HighDupe executor not initialized');
                 return;
@@ -170,6 +179,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             executor.addIgnoredInstance(documentUri, line, character, word);
             vscode.window.showInformationMessage(`Ignored this instance of "${word}"`);
+            console.log('HighDupe: Instance ignored, triggering re-check');
 
             // Trigger a re-check to update decorations immediately
             if (vscode.window.activeTextEditor) {
@@ -234,16 +244,20 @@ export function activate(context: vscode.ExtensionContext) {
  * Run checks and update code action provider
  */
 function runChecksAndUpdate(editor: vscode.TextEditor): void {
+    console.log('HighDupe: runChecksAndUpdate called');
     if (!executor) {
+        console.log('HighDupe: executor is undefined, skipping check');
         return;
     }
 
+    console.log('HighDupe: Running checks on document:', editor.document.uri.toString());
     executor.runChecks(editor);
 
     // Update code action provider with latest results
     if (codeActionProvider) {
         const documentUri = editor.document.uri.toString();
         const results = executor.getLatestResults(documentUri);
+        console.log('HighDupe: Updating code action provider with', results.length, 'results');
         codeActionProvider.updateCheckResults(documentUri, results);
     }
 }

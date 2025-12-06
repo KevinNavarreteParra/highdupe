@@ -127,8 +127,8 @@ export function activate(context: vscode.ExtensionContext) {
                 await config.update('modules.duplicateWord.excludeWords.global', globalExcludeWords, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage(`Added "${word}" to global exclude list`);
 
-                // Trigger a re-check
-                if (isCheckingEnabled && vscode.window.activeTextEditor && executor) {
+                // Trigger a re-check immediately
+                if (vscode.window.activeTextEditor && executor) {
                     runChecksAndUpdate(vscode.window.activeTextEditor);
                 }
             } else {
@@ -149,8 +149,8 @@ export function activate(context: vscode.ExtensionContext) {
                 await config.update('modules.duplicateWord.excludeWords.project', projectExcludeWords, vscode.ConfigurationTarget.Workspace);
                 vscode.window.showInformationMessage(`Added "${word}" to project exclude list`);
 
-                // Trigger a re-check
-                if (isCheckingEnabled && vscode.window.activeTextEditor && executor) {
+                // Trigger a re-check immediately
+                if (vscode.window.activeTextEditor && executor) {
                     runChecksAndUpdate(vscode.window.activeTextEditor);
                 }
             } else {
@@ -171,8 +171,8 @@ export function activate(context: vscode.ExtensionContext) {
             executor.addIgnoredInstance(documentUri, line, character, word);
             vscode.window.showInformationMessage(`Ignored this instance of "${word}"`);
 
-            // Trigger a re-check to update decorations
-            if (isCheckingEnabled && vscode.window.activeTextEditor) {
+            // Trigger a re-check to update decorations immediately
+            if (vscode.window.activeTextEditor) {
                 runChecksAndUpdate(vscode.window.activeTextEditor);
             }
         }

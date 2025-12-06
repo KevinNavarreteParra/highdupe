@@ -267,10 +267,11 @@ function runChecksAndUpdate(editor: vscode.TextEditor): void {
             const diagnostic = new vscode.Diagnostic(
                 result.range,
                 result.message,
-                vscode.DiagnosticSeverity.Information
+                vscode.DiagnosticSeverity.Hint // Use Hint severity for subtle diagnostics
             );
             diagnostic.source = 'HighDupe';
             diagnostic.code = result.issueType;
+            diagnostic.tags = [vscode.DiagnosticTag.Unnecessary]; // This shows as faded/grayed out
             return diagnostic;
         });
         diagnosticCollection.set(editor.document.uri, diagnostics);

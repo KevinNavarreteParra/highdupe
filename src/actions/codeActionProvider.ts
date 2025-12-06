@@ -46,7 +46,8 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
             return [];
         }
 
-        const actions: vscode.CodeAction[] = [];
+        const actions: (vscode.CodeAction | vscode.Command)[] = [];
+        const wordsProcessed = new Set<string>(); // Track words we've already added actions for
 
         // Find all check results that intersect with the current range or contain the cursor
         for (const result of results) {
@@ -56,43 +57,37 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
             const containsEnd = result.range.contains(range.end);
 
             if (intersects || containsStart || containsEnd) {
-                console.log('  Found matching result for word:', result.text);
-
                 // Only provide actions for duplicate-word issues
                 if (result.issueType === 'duplicate-word') {
                     const word = result.text.toLowerCase();
 
-                    // Action 1: Add to global exclude list
-                    const addToGlobalAction = new vscode.CodeAction(
-                        `Add "${word}" to global exclude list`,
-                        vscode.CodeActionKind.QuickFix
-                    );
-                    addToGlobalAction.command = {
-                        title: 'Add to global exclude list',
+                    // Skip if we've already added actions for this word
+                    if (wordsProcessed.has(word)) {
+                        continue;
+                    }
+                    wordsProcessed.add(word);
+
+                    console.log('  Found matching result for word:', result.text);
+
+                    // Command 1: Add to global exclude list
+                    const addToGlobalCommand: vscode.Command = {
+                        title: `Add "${word}" to global exclude list`,
                         command: 'highdupe.addToGlobalExcludeList',
                         arguments: [word]
                     };
-                    actions.push(addToGlobalAction);
+                    actions.push(addToGlobalCommand);
 
-                    // Action 2: Add to project exclude list
-                    const addToProjectAction = new vscode.CodeAction(
-                        `Add "${word}" to project exclude list`,
-                        vscode.CodeActionKind.QuickFix
-                    );
-                    addToProjectAction.command = {
-                        title: 'Add to project exclude list',
+                    // Command 2: Add to project exclude list
+                    const addToProjectCommand: vscode.Command = {
+                        title: `Add "${word}" to project exclude list`,
                         command: 'highdupe.addToProjectExcludeList',
                         arguments: [word]
                     };
-                    actions.push(addToProjectAction);
+                    actions.push(addToProjectCommand);
 
-                    // Action 3: Ignore this instance
-                    const ignoreInstanceAction = new vscode.CodeAction(
-                        `Ignore this instance of "${word}"`,
-                        vscode.CodeActionKind.QuickFix
-                    );
-                    ignoreInstanceAction.command = {
-                        title: 'Ignore this instance',
+                    // Command 3: Ignore this instance
+                    const ignoreInstanceCommand: vscode.Command = {
+                        title: `Ignore this instance of "${word}"`,
                         command: 'highdupe.ignoreInstance',
                         arguments: [
                             documentUri,
@@ -101,7 +96,7 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
                             word
                         ]
                     };
-                    actions.push(ignoreInstanceAction);
+                    actions.push(ignoreInstanceCommand);
                 }
             }
         }

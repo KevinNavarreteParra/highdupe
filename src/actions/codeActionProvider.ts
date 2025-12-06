@@ -50,87 +50,135 @@ export class HighDupeCodeActionProvider implements vscode.CodeActionProvider {
         const actions: vscode.CodeAction[] = [];
         const wordsProcessed = new Set<string>(); // Track words we've already added actions for
 
-        // Process diagnostics provided by VS Code
-        for (const diagnostic of context.diagnostics) {
-            // Only handle our diagnostics
-            if (diagnostic.source !== 'HighDupe') {
-                continue;
+        // If diagnostics are available, use them (preferred method)
+        if (context.diagnostics.length > 0) {
+            // Process diagnostics provided by VS Code
+            for (const diagnostic of context.diagnostics) {
+                // Only handle our diagnostics
+                if (diagnostic.source !== 'HighDupe') {
+                    continue;
+                }
+
+                // Only handle duplicate-word issues
+                if (diagnostic.code !== 'duplicate-word') {
+                    continue;
+                }
+
+                // Find the corresponding result
+                const result = results.find(r =>
+                    r.range.isEqual(diagnostic.range) &&
+                    r.issueType === 'duplicate-word'
+                );
+
+                if (!result) {
+                    continue;
+                }
+
+                const word = result.text.toLowerCase();
+
+                // Skip if we've already added actions for this word
+                if (wordsProcessed.has(word)) {
+                    continue;
+                }
+                wordsProcessed.add(word);
+
+                console.log('  Found diagnostic for word:', result.text);
+                this.addActionsForWord(actions, word, result, documentUri, diagnostic);
             }
+        } else {
+            // Fallback: find results that intersect with the range
+            console.log('  No diagnostics in context, using range-based detection');
+            for (const result of results) {
+                // Only handle duplicate-word issues
+                if (result.issueType !== 'duplicate-word') {
+                    continue;
+                }
 
-            // Only handle duplicate-word issues
-            if (diagnostic.code !== 'duplicate-word') {
-                continue;
+                // Check if the result range contains the cursor position or overlaps with the selection
+                const intersects = result.range.intersection(range) !== undefined;
+                const containsStart = result.range.contains(range.start);
+                const containsEnd = result.range.contains(range.end);
+
+                if (intersects || containsStart || containsEnd) {
+                    const word = result.text.toLowerCase();
+
+                    // Skip if we've already added actions for this word
+                    if (wordsProcessed.has(word)) {
+                        continue;
+                    }
+                    wordsProcessed.add(word);
+
+                    console.log('  Found range-based result for word:', result.text);
+                    this.addActionsForWord(actions, word, result, documentUri);
+                }
             }
-
-            // Find the corresponding result
-            const result = results.find(r =>
-                r.range.isEqual(diagnostic.range) &&
-                r.issueType === 'duplicate-word'
-            );
-
-            if (!result) {
-                continue;
-            }
-
-            const word = result.text.toLowerCase();
-
-            // Skip if we've already added actions for this word
-            if (wordsProcessed.has(word)) {
-                continue;
-            }
-            wordsProcessed.add(word);
-
-            console.log('  Found diagnostic for word:', result.text);
-
-            // Action 1: Add to global exclude list
-            const addToGlobalAction = new vscode.CodeAction(
-                `Add "${word}" to global exclude list`,
-                vscode.CodeActionKind.QuickFix
-            );
-            addToGlobalAction.command = {
-                title: `Add "${word}" to global exclude list`,
-                command: 'highdupe.addToGlobalExcludeList',
-                arguments: [word]
-            };
-            addToGlobalAction.diagnostics = [diagnostic];
-            addToGlobalAction.isPreferred = false;
-            actions.push(addToGlobalAction);
-
-            // Action 2: Add to project exclude list
-            const addToProjectAction = new vscode.CodeAction(
-                `Add "${word}" to project exclude list`,
-                vscode.CodeActionKind.QuickFix
-            );
-            addToProjectAction.command = {
-                title: `Add "${word}" to project exclude list`,
-                command: 'highdupe.addToProjectExcludeList',
-                arguments: [word]
-            };
-            addToProjectAction.diagnostics = [diagnostic];
-            addToProjectAction.isPreferred = false;
-            actions.push(addToProjectAction);
-
-            // Action 3: Ignore this instance
-            const ignoreInstanceAction = new vscode.CodeAction(
-                `Ignore this instance of "${word}"`,
-                vscode.CodeActionKind.QuickFix
-            );
-            ignoreInstanceAction.command = {
-                title: `Ignore this instance of "${word}"`,
-                command: 'highdupe.ignoreInstance',
-                arguments: [
-                    documentUri,
-                    result.range.start.line,
-                    result.range.start.character,
-                    word
-                ]
-            };
-            ignoreInstanceAction.diagnostics = [diagnostic];
-            ignoreInstanceAction.isPreferred = true;
-            actions.push(ignoreInstanceAction);
         }
 
         console.log('  Returning', actions.length, 'code actions');
         return actions;
+    }
+
+    /**
+     * Helper method to add actions for a word
+     */
+    private addActionsForWord(
+        actions: vscode.CodeAction[],
+        word: string,
+        result: any,
+        documentUri: string,
+        diagnostic?: vscode.Diagnostic
+    ): void {
+        // Action 1: Add to global exclude list
+        const addToGlobalAction = new vscode.CodeAction(
+            `Add "${word}" to global exclude list`,
+            vscode.CodeActionKind.QuickFix
+        );
+        addToGlobalAction.command = {
+            title: `Add "${word}" to global exclude list`,
+            command: 'highdupe.addToGlobalExcludeList',
+            arguments: [word]
+        };
+        if (diagnostic) {
+            addToGlobalAction.diagnostics = [diagnostic];
+        }
+        addToGlobalAction.isPreferred = false;
+        actions.push(addToGlobalAction);
+
+        // Action 2: Add to project exclude list
+        const addToProjectAction = new vscode.CodeAction(
+            `Add "${word}" to project exclude list`,
+            vscode.CodeActionKind.QuickFix
+        );
+        addToProjectAction.command = {
+            title: `Add "${word}" to project exclude list`,
+            command: 'highdupe.addToProjectExcludeList',
+            arguments: [word]
+        };
+        if (diagnostic) {
+            addToProjectAction.diagnostics = [diagnostic];
+        }
+        addToProjectAction.isPreferred = false;
+        actions.push(addToProjectAction);
+
+        // Action 3: Ignore this instance
+        const ignoreInstanceAction = new vscode.CodeAction(
+            `Ignore this instance of "${word}"`,
+            vscode.CodeActionKind.QuickFix
+        );
+        ignoreInstanceAction.command = {
+            title: `Ignore this instance of "${word}"`,
+            command: 'highdupe.ignoreInstance',
+            arguments: [
+                documentUri,
+                result.range.start.line,
+                result.range.start.character,
+                word
+            ]
+        };
+        if (diagnostic) {
+            ignoreInstanceAction.diagnostics = [diagnostic];
+        }
+        ignoreInstanceAction.isPreferred = true;
+        actions.push(ignoreInstanceAction);
     }
 }

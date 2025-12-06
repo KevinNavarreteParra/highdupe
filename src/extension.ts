@@ -8,6 +8,7 @@ let executor: Executor | undefined;
 let isCheckingEnabled = false;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let codeActionProvider: HighDupeCodeActionProvider | undefined;
+let diagnosticCollection: vscode.DiagnosticCollection | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('HighDupe extension activated!');
@@ -17,6 +18,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register all modules
     ModuleRegistry.registerAll(executor);
+
+    // Create diagnostic collection
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('highdupe');
+    context.subscriptions.push(diagnosticCollection);
 
     // Create and register code action provider
     codeActionProvider = new HighDupeCodeActionProvider();
@@ -253,10 +258,27 @@ function runChecksAndUpdate(editor: vscode.TextEditor): void {
     console.log('HighDupe: Running checks on document:', editor.document.uri.toString());
     executor.runChecks(editor);
 
+    const documentUri = editor.document.uri.toString();
+    const results = executor.getLatestResults(documentUri);
+
+    // Create diagnostics from check results
+    if (diagnosticCollection) {
+        const diagnostics: vscode.Diagnostic[] = results.map(result => {
+            const diagnostic = new vscode.Diagnostic(
+                result.range,
+                result.message,
+                vscode.DiagnosticSeverity.Information
+            );
+            diagnostic.source = 'HighDupe';
+            diagnostic.code = result.issueType;
+            return diagnostic;
+        });
+        diagnosticCollection.set(editor.document.uri, diagnostics);
+        console.log('HighDupe: Set', diagnostics.length, 'diagnostics');
+    }
+
     // Update code action provider with latest results
     if (codeActionProvider) {
-        const documentUri = editor.document.uri.toString();
-        const results = executor.getLatestResults(documentUri);
         console.log('HighDupe: Updating code action provider with', results.length, 'results');
         codeActionProvider.updateCheckResults(documentUri, results);
     }

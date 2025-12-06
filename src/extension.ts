@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 import { Executor } from './core/executor';
 import { ModuleRegistry } from './modules/registry';
 import { HighDupeConfiguration } from './core/types';
+import { HighDupeCodeActionProvider } from './actions/codeActionProvider';
 
 let executor: Executor | undefined;
 let isCheckingEnabled = false;
 let statusBarItem: vscode.StatusBarItem | undefined;
+let codeActionProvider: HighDupeCodeActionProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('HighDupe extension activated!');
@@ -15,6 +17,26 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register all modules
     ModuleRegistry.registerAll(executor);
+
+    // Create and register code action provider
+    codeActionProvider = new HighDupeCodeActionProvider();
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider(
+            { language: 'latex' },
+            codeActionProvider,
+            {
+                providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
+            }
+        )
+    );
+
+    // Set callback to update code action provider when checks complete
+    executor.setOnCheckCompleteCallback((documentUri: string) => {
+        if (codeActionProvider && executor) {
+            const results = executor.getLatestResults(documentUri);
+            codeActionProvider.updateCheckResults(documentUri, results);
+        }
+    });
 
     // Create status bar item
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -35,7 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                 // Re-run checks if enabled
                 if (isCheckingEnabled && vscode.window.activeTextEditor) {
-                    executor?.runChecks(vscode.window.activeTextEditor);
+                    runChecksAndUpdate(vscode.window.activeTextEditor);
                 }
             }
         })
@@ -57,7 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             // Run checks
-            executor.runChecks(editor);
+            runChecksAndUpdate(editor);
             vscode.window.showInformationMessage('HighDupe: Checks completed');
         }
     );
@@ -89,6 +111,69 @@ export function activate(context: vscode.ExtensionContext) {
                 isCheckingEnabled = true;
                 updateStatusBar();
                 vscode.window.showInformationMessage('HighDupe: Continuous checking enabled');
+            }
+        }
+    );
+
+    // Register command: Add word to global exclude list
+    const addToGlobalExcludeListCommand = vscode.commands.registerCommand(
+        'highdupe.addToGlobalExcludeList',
+        async (word: string) => {
+            const config = vscode.workspace.getConfiguration('highdupe');
+            const globalExcludeWords: string[] = config.get('modules.duplicateWord.excludeWords.global', []);
+
+            if (!globalExcludeWords.includes(word.toLowerCase())) {
+                globalExcludeWords.push(word.toLowerCase());
+                await config.update('modules.duplicateWord.excludeWords.global', globalExcludeWords, vscode.ConfigurationTarget.Global);
+                vscode.window.showInformationMessage(`Added "${word}" to global exclude list`);
+
+                // Trigger a re-check
+                if (isCheckingEnabled && vscode.window.activeTextEditor && executor) {
+                    runChecksAndUpdate(vscode.window.activeTextEditor);
+                }
+            } else {
+                vscode.window.showInformationMessage(`"${word}" is already in the global exclude list`);
+            }
+        }
+    );
+
+    // Register command: Add word to project exclude list
+    const addToProjectExcludeListCommand = vscode.commands.registerCommand(
+        'highdupe.addToProjectExcludeList',
+        async (word: string) => {
+            const config = vscode.workspace.getConfiguration('highdupe');
+            const projectExcludeWords: string[] = config.get('modules.duplicateWord.excludeWords.project', []);
+
+            if (!projectExcludeWords.includes(word.toLowerCase())) {
+                projectExcludeWords.push(word.toLowerCase());
+                await config.update('modules.duplicateWord.excludeWords.project', projectExcludeWords, vscode.ConfigurationTarget.Workspace);
+                vscode.window.showInformationMessage(`Added "${word}" to project exclude list`);
+
+                // Trigger a re-check
+                if (isCheckingEnabled && vscode.window.activeTextEditor && executor) {
+                    runChecksAndUpdate(vscode.window.activeTextEditor);
+                }
+            } else {
+                vscode.window.showInformationMessage(`"${word}" is already in the project exclude list`);
+            }
+        }
+    );
+
+    // Register command: Ignore this instance
+    const ignoreInstanceCommand = vscode.commands.registerCommand(
+        'highdupe.ignoreInstance',
+        (documentUri: string, line: number, character: number, word: string) => {
+            if (!executor) {
+                vscode.window.showErrorMessage('HighDupe executor not initialized');
+                return;
+            }
+
+            executor.addIgnoredInstance(documentUri, line, character, word);
+            vscode.window.showInformationMessage(`Ignored this instance of "${word}"`);
+
+            // Trigger a re-check to update decorations
+            if (isCheckingEnabled && vscode.window.activeTextEditor) {
+                runChecksAndUpdate(vscode.window.activeTextEditor);
             }
         }
     );
@@ -128,6 +213,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Add commands to subscriptions
     context.subscriptions.push(findRepeatedWordsCommand);
     context.subscriptions.push(toggleCheckingCommand);
+    context.subscriptions.push(addToGlobalExcludeListCommand);
+    context.subscriptions.push(addToProjectExcludeListCommand);
+    context.subscriptions.push(ignoreInstanceCommand);
 
     // Add executor to subscriptions for cleanup
     context.subscriptions.push({
@@ -140,6 +228,24 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     console.log('HighDupe: Extension fully activated with', executor.getModules().length, 'modules');
+}
+
+/**
+ * Run checks and update code action provider
+ */
+function runChecksAndUpdate(editor: vscode.TextEditor): void {
+    if (!executor) {
+        return;
+    }
+
+    executor.runChecks(editor);
+
+    // Update code action provider with latest results
+    if (codeActionProvider) {
+        const documentUri = editor.document.uri.toString();
+        const results = executor.getLatestResults(documentUri);
+        codeActionProvider.updateCheckResults(documentUri, results);
+    }
 }
 
 /**
